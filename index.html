@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>リミックス 自動チェック</title>
+<style>
+/* 上に動画（元ネタ｜今の版）、下にショット帯。広い画面では右に判定とメモ */
+:root {
+  --bg:#f1f2f5; --panel:#fff; --line:#e1e4ea; --ink:#1b1e26; --sub:#646b78;
+  --accent:#f0561d; --accent-ink:#fff; --ok:#2e7d32; --warn:#c77700; --bad:#c62828; --stage:#101217; --soft:#f6f7f9; --reply-line:#2f62d8;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg:#121418; --panel:#1b1e24; --line:#2c3039; --ink:#eceef2; --sub:#9aa1ad; --accent:#ff6a33; --stage:#050608; --soft:#22262d; --reply-line:#6c97ff; color-scheme: dark } }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: "Hiragino Sans","Noto Sans JP","Yu Gothic UI","Meiryo",system-ui,sans-serif; font-size: 15px; padding: 0 16px 24px; }
+header { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding-block:12px; }
+header h1 { font-size:16px; margin:0; display:flex; align-items:center; gap:8px; }
+header h1 i { width:10px; height:10px; border-radius:50%; background:var(--accent); display:inline-block; }
+.chip { font-size:12px; padding:3px 9px; border-radius:999px; background:var(--soft); border:1px solid var(--line); color:var(--sub); }
+.chip.ban { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:700; }
+main { display:grid; gap:14px; grid-template-columns:minmax(0,1fr); }
+@media (min-width:900px) { main { grid-template-columns:minmax(0,1fr) 400px; } }
+.left,.right { display:flex; flex-direction:column; gap:10px; min-width:0; }
+.drop { border:2px dashed var(--line); border-radius:12px; padding:14px; background:var(--panel); display:grid; gap:10px; grid-template-columns:1fr 1fr; }
+@media (max-width:600px) { .drop { grid-template-columns:1fr; } }
+.drop.over { border-color:var(--accent); background:var(--soft); }
+.drop .slot { display:flex; flex-direction:column; gap:6px; min-width:0; }
+.drop label.t { font-weight:700; font-size:13px; }
+.drop input[type=file] { font:inherit; font-size:13px; max-width:100%; }
+.drop input[type=text] { width:100%; font:inherit; font-size:14px; padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--ink); }
+.drop .note { font-size:12px; color:var(--sub); grid-column:1 / -1; }
+.stage { background:var(--stage); border-radius:12px; padding:10px; display:flex; justify-content:center; gap:10px; }
+.stage .col { display:flex; flex-direction:column; gap:6px; align-items:center; min-width:0; flex:1 1 0; }
+.stage .lab { color:#cfd3dc; font-size:12px; font-weight:700; text-align:center; }
+.stage video,.stage .yt { display:block; width:100%; max-height:min(62vh,640px); aspect-ratio:9/16; background:#000; border-radius:8px; object-fit:contain; overflow:hidden; }
+.stage .yt iframe { width:100%; height:100%; border:0; display:block; }
+[hidden] { display:none !important; }
+.track { position:relative; height:30px; background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; touch-action:none; cursor:pointer; }
+.track .shot { position:absolute; top:0; bottom:0; border-right:1px solid var(--line); }
+.track .shot:nth-child(odd) { background:var(--soft); }
+.track .shot.long { background:rgba(199,119,0,.18); }
+.track .sil { position:absolute; bottom:0; height:6px; background:var(--bad); opacity:.7; }
+.track .pin { position:absolute; top:5px; width:8px; height:18px; margin-left:-4px; border-radius:4px; background:var(--accent); }
+.track .head { position:absolute; top:0; bottom:0; width:2px; background:var(--ink); pointer-events:none; }
+.track2 { height:14px; margin-top:-4px; opacity:.8; }
+.tlab { font-size:11px; color:var(--sub); display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+.bar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.bar button { font:inherit; font-size:14px; padding:9px 12px; border-radius:8px; border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; }
+.bar button.play { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:700; min-width:92px; }
+.bar button.on { background:var(--ink); color:var(--panel); border-color:var(--ink); }
+.bar .time { font-variant-numeric:tabular-nums; color:var(--sub); font-size:13px; }
+.box { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+.box h2 { font-size:14px; margin:0 0 8px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.box h2 button, .mini { font:inherit; font-size:12px; font-weight:400; border:1px solid var(--line); background:var(--panel); color:var(--sub); border-radius:6px; padding:4px 8px; cursor:pointer; }
+.now .scene { font-weight:700; display:flex; flex-wrap:wrap; gap:8px; align-items:baseline; }
+.now .scene .t { color:var(--accent); font-variant-numeric:tabular-nums; }
+.now .scene .r { color:var(--sub); font-size:12px; font-weight:400; }
+.prog b { color:var(--ink); }
+.v .row { display:flex; gap:8px; align-items:flex-start; padding:7px 0; border-top:1px solid var(--line); font-size:14px; }
+.v .row:first-child { border-top:none; }
+.v .row .s { flex:0 0 auto; font-size:11px; font-weight:700; padding:2px 7px; border-radius:999px; color:#fff; background:var(--sub); min-width:38px; text-align:center; margin-top:2px; }
+.v .row .s.ok { background:var(--ok); } .v .row .s.warn { background:var(--warn); } .v .row .s.bad { background:var(--bad); }
+.v .row .m { flex:1 1 auto; min-width:0; }
+.v .row .m small { display:block; color:var(--sub); font-size:12px; margin-top:2px; }
+.v .row .j { font:inherit; font-size:12px; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--reply-line); padding:2px 7px; cursor:pointer; white-space:nowrap; }
+table { width:100%; border-collapse:collapse; font-size:13px; font-variant-numeric:tabular-nums; }
+th, td { text-align:right; padding:4px 6px; border-top:1px solid var(--line); }
+th { color:var(--sub); font-weight:400; font-size:12px; }
+td:first-child, th:first-child { text-align:left; }
+td.d.bad { color:var(--bad); font-weight:700; } td.d.warn { color:var(--warn); font-weight:700; }
+tr.cur td { background:var(--soft); }
+tr[data-t] { cursor:pointer; }
+.tblwrap { overflow:auto; max-height:260px; }
+label.f { display:block; font-size:12px; color:var(--sub); margin:0 0 6px; }
+textarea { width:100%; font:inherit; font-size:16px; padding:9px 10px; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--ink); min-height:70px; resize:vertical; }
+textarea:focus, input:focus { outline:none; border-color:var(--accent); }
+.send { display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+.send button.main { font:inherit; font-weight:700; padding:10px 18px; border-radius:8px; border:none; background:var(--accent); color:var(--accent-ink); cursor:pointer; }
+.msg { font-size:13px; color:var(--sub); }
+.c { padding:8px 0; border-top:1px solid var(--line); cursor:pointer; display:flex; gap:8px; }
+.c .t { color:var(--accent); font-weight:700; font-variant-numeric:tabular-nums; flex:0 0 auto; }
+.c .body { white-space:pre-wrap; overflow-wrap:anywhere; flex:1 1 auto; }
+.c .x { font:inherit; font-size:12px; border:1px solid var(--line); background:var(--panel); color:var(--sub); border-radius:6px; padding:2px 8px; cursor:pointer; align-self:flex-start; }
+.c.empty { color:var(--sub); cursor:default; display:block; }
+.empty-state { color:var(--sub); font-size:13px; }
+button:focus-visible { outline:2px solid var(--reply-line); outline-offset:2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><i></i>リミックス 自動チェック</h1>
+  <span class="chip ban" id="ban">動画を入れてください</span>
+  <span class="chip" id="srcchip" hidden>元ネタあり</span>
+</header>
+
+<main>
+<div class="left">
+  <div class="drop" id="drop">
+    <div class="slot">
+      <label class="t" for="fmine">今の版（自分のリミックス mp4）</label>
+      <input type="file" id="fmine" accept="video/*">
+    </div>
+    <div class="slot">
+      <label class="t" for="fsrc">元ネタ（mp4 があれば。無ければ YouTube の URL）</label>
+      <input type="file" id="fsrc" accept="video/*">
+      <input type="text" id="yturl" placeholder="https://www.youtube.com/shorts/…">
+    </div>
+    <div class="note">ファイルはこのページの中だけで読みます（どこにも送りません）。画面のどこにファイルを落としても入ります（2つ同時に落とすと 1つ目＝今の版、2つ目＝元ネタ）。</div>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="col src" id="srccol" hidden>
+      <div class="lab" id="srclab">元ネタ <span>（音なし）</span></div>
+      <video id="s" muted playsinline preload="auto" hidden></video>
+      <div class="yt" id="ytbox" hidden><div id="yt"></div></div>
+    </div>
+    <div class="col mine">
+      <div class="lab" id="minelab">今の版</div>
+      <video id="v" controls playsinline preload="auto"></video>
+    </div>
+  </div>
+  <div class="tlab"><span>今の版のショット（オレンジ帯＝3秒以上／下の赤＝無音／釘＝メモ）</span><span id="prog" class="prog"></span></div>
+  <div class="track" id="track"><div class="head" id="head"></div></div>
+  <div class="tlab"><span>元ネタのショット（mp4 を入れた時）</span></div>
+  <div class="track track2" id="track2"></div>
+  <div class="bar">
+    <button class="play" id="play">▶ 再生</button>
+    <button id="back">−1秒</button><button id="fwd">＋1秒</button>
+    <button id="prevShot">前のショット</button><button id="nextShot">次のショット</button>
+    <button id="srcbtn" class="on" hidden>元ネタを並べる</button>
+    <span class="time" id="time">0:00.0 / 0:00.0</span>
+  </div>
+  <div class="box now" id="now"><div class="scene">ショット –<span class="t">0:00.0</span></div></div>
+</div>
+
+<div class="right">
+  <div class="box">
+    <h2>自動判定 <button id="rerun" hidden>もう一度判定</button></h2>
+    <div class="v" id="verdict"><div class="empty-state">今の版の動画を入れると、ショット割り・尺・無音・元ネタとのズレを自動で見ます。</div></div>
+  </div>
+  <div class="box" id="cmpbox" hidden>
+    <h2>ショットごとの比較（元ネタ ↔ 今の版）</h2>
+    <div class="tblwrap"><table id="cmp"></table></div>
+  </div>
+  <div class="box">
+    <label class="f" for="in">止めた所へのメモ</label>
+    <textarea id="in" maxlength="2000" placeholder="例：ここの字幕が顔にかかっている"></textarea>
+    <div class="send"><button class="main" id="save">この秒に保存</button><button class="mini" id="copy">判定とメモを全部コピー</button><span class="msg" id="msg"></span></div>
+  </div>
+  <div class="box">
+    <h2><span id="listTitle">メモ 0件</span></h2>
+    <div id="cs"><div class="c empty">まだメモはありません。</div></div>
+  </div>
+</div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const v = $('v'), s = $('s');
+const fmt = t => { t = Math.max(0, t || 0); const m = Math.floor(t / 60); return `${m}:${(t % 60).toFixed(1).padStart(4, '0')}`; };
+const esc = x => String(x ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const store = { get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }, set(k, x) { try { localStorage.setItem(k, x); } catch (e) {} } };
+let KEY = '', mine = null, src = null, comments = [], useSrc = true, srcMode = 'none', busy = false;
+const dur = () => v.duration || 0;
+
+// ---------- 読み込み ----------
+function setMine(file) {
+  if (!file) return;
+  KEY = file.name.replace(/\.[^.]+$/, '');
+  $('ban').textContent = KEY; $('minelab').textContent = `今の版（${KEY}）`;
+  v.src = URL.createObjectURL(file);
+  mine = { file, shots: [], silences: [], stills: [], audio: null };
+  try { comments = JSON.parse(store.get('remix-check|' + KEY) || '[]'); } catch (e) { comments = []; }
+  renderList();
+  v.addEventListener('loadedmetadata', () => analyzeAll(), { once: true });
+}
+function setSrcFile(file) {
+  if (!file) return;
+  srcMode = 'file'; src = { file, shots: [], name: file.name, duration: 0 };
+  s.src = URL.createObjectURL(file); s.hidden = false; $('ytbox').hidden = true;
+  $('srccol').hidden = false; $('srcbtn').hidden = false; $('srcchip').hidden = false; $('srcchip').textContent = `元ネタ：${file.name}`;
+  $('srclab').innerHTML = '元ネタ <span>（音なし）</span>';
+  s.addEventListener('loadedmetadata', async () => { src.duration = s.duration; await detectShots(s, src, '元ネタ'); renderTrack2(); verdict(); cmpTable(); }, { once: true });
+}
+const ytId = u => (String(u || '').match(/(?:shorts\/|youtu\.be\/|[?&]v=|embed\/)([\w-]{11})/) || [])[1] || '';
+let yt = null, ytReady = false, lastSeek = 0;
+function setSrcYt(url) {
+  const id = ytId(url); if (!id) return;
+  srcMode = 'yt'; src = { shots: [], name: 'YouTube ' + id, duration: 0 };
+  s.hidden = true; $('ytbox').hidden = false; $('srccol').hidden = false; $('srcbtn').hidden = false; $('srcchip').hidden = false; $('srcchip').textContent = '元ネタ：YouTube';
+  $('srclab').innerHTML = '元ネタ <span>（YouTube・音なし）</span>';
+  const make = () => {
+    if (yt) { yt.loadVideoById(id); yt.pauseVideo(); return; }
+    yt = new YT.Player('yt', { videoId: id, width: '100%', height: '100%', playerVars: { mute: 1, controls: 0, playsinline: 1, rel: 0, modestbranding: 1, disablekb: 1, fs: 0 },
+      events: { onReady: () => { ytReady = true; yt.mute(); src.duration = yt.getDuration() || 0; verdict(); follow(true); },
+        onStateChange: e => { if (e.data === 1 && v.paused) { yt.pauseVideo(); yt.seekTo(v.currentTime, true); } if (!src.duration) { src.duration = yt.getDuration() || 0; verdict(); } },
+        onError: () => { $('srclab').textContent = '元ネタ：この動画は埋め込みできません。mp4 を入れてください'; } } });
+  };
+  if (window.YT && YT.Player) make(); else { window.onYouTubeIframeAPIReady = make; const sc = document.createElement('script'); sc.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(sc); }
+  renderTrack2(); cmpTable();
+}
+// リンクに ?v=〔名前〕 があれば、同じ場所の videos/〔名前〕.mp4 と videos/〔名前〕.json（{"src": 元ネタURL, "title": 題}）を自動で読む
+(async () => {
+  const key = new URLSearchParams(location.search).get('v') || '';
+  if (!/^[0-9A-Za-z_\-　-鿿＀-￯]{1,80}$/.test(key)) return;
+  try {
+    const meta = await (await fetch(`videos/${encodeURIComponent(key)}.json`, { cache: 'no-store' })).json().catch(() => ({}));
+    const r = await fetch(`videos/${encodeURIComponent(key)}.mp4`); if (!r.ok) throw 0;
+    setMine(new File([await r.blob()], key + '.mp4', { type: 'video/mp4' }));
+    if (meta.title) document.title = `${meta.title} リミックス 自動チェック`;
+    if (meta.src) { $('yturl').value = meta.src; setSrcYt(meta.src); }
+    $('drop').hidden = true;
+  } catch (e) { $('ban').textContent = 'この動画は見つかりませんでした。送られてきたリンクをそのまま開いてください'; }
+})();
+$('fmine').onchange = e => setMine(e.target.files[0]);
+$('fsrc').onchange = e => setSrcFile(e.target.files[0]);
+$('yturl').onchange = e => setSrcYt(e.target.value.trim());
+$('yturl').onpaste = () => setTimeout(() => setSrcYt($('yturl').value.trim()), 0);
+['dragenter', 'dragover'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
+document.addEventListener('drop', e => {
+  const fs = [...e.dataTransfer.files].filter(f => /video|mp4|mov|webm|m4v/i.test(f.type + f.name));
+  if (!fs.length) return;
+  if (!mine) { setMine(fs[0]); if (fs[1]) setSrcFile(fs[1]); } else setSrcFile(fs[0]);
+});
+
+// ---------- 同期再生 ----------
+function follow(force) {
+  if (!useSrc || busy) return;
+  if (srcMode === 'file') {
+    if (v.paused) { if (!s.paused) s.pause(); if (force || Math.abs(s.currentTime - v.currentTime) > 0.08) s.currentTime = v.currentTime; return; }
+    if (s.playbackRate !== v.playbackRate) s.playbackRate = v.playbackRate;
+    if (force || Math.abs(s.currentTime - v.currentTime) > 0.25) s.currentTime = v.currentTime;
+    if (s.paused && v.currentTime < (s.duration || 1e9)) s.play().catch(() => {});
+  } else if (srcMode === 'yt' && ytReady) {
+    try {
+      const st = yt.getPlayerState(), now = performance.now();
+      if (v.paused) { if (st === 1 || st === 3) yt.pauseVideo(); if (force || Math.abs(yt.getCurrentTime() - v.currentTime) > 0.15) yt.seekTo(v.currentTime, true); return; }
+      if (yt.getPlaybackRate() !== v.playbackRate) yt.setPlaybackRate(v.playbackRate);
+      const off = Math.abs(yt.getCurrentTime() - v.currentTime);
+      if (force || (st !== 3 && off > 1 && now - lastSeek > 2000)) { yt.seekTo(v.currentTime, true); lastSeek = now; }
+      if (st !== 1 && st !== 3 && v.currentTime < (yt.getDuration() || 1e9)) yt.playVideo();
+    } catch (e) {}
+  }
+}
+function setSrc(on) { useSrc = on; $('srccol').hidden = !on; $('srcbtn').classList.toggle('on', on); if (on) follow(true); else { s.pause(); if (ytReady) try { yt.pauseVideo(); } catch (e) {} } }
+$('srcbtn').onclick = () => setSrc(!useSrc);
+v.addEventListener('play', () => { $('play').textContent = '❚❚ 止める'; follow(true); });
+v.addEventListener('pause', () => { $('play').textContent = '▶ 再生'; follow(true); });
+v.addEventListener('seeked', () => { if (!busy) { follow(true); renderNow(); } });
+v.addEventListener('ratechange', () => follow(true));
+v.addEventListener('timeupdate', () => { if (!busy) { follow(false); renderNow(); } });
+
+// ---------- ショット判定（0.1秒ごとの絵の変化量） ----------
+async function detectShots(vid, obj, label) {
+  const W = 48, H = 84, step = 0.1;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const cx = cv.getContext('2d', { willReadFrequently: true });
+  const D = vid.duration; if (!D || !isFinite(D)) return;
+  const wasT = vid.currentTime, wasMuted = vid.muted; vid.pause(); vid.muted = true; busy = true;
+  const seek = t => new Promise(r => { let done = false; const fin = () => { if (done) return; done = true; vid.removeEventListener('seeked', fin); r(); }; vid.addEventListener('seeked', fin); vid.currentTime = Math.min(D - 0.01, t); setTimeout(fin, 1500); });
+  let prev = null; const diffs = [], times = [], stills = [];
+  for (let t = 0; t < D; t += step) {
+    await seek(t);
+    cx.drawImage(vid, 0, 0, W, H);
+    const d = cx.getImageData(0, 0, W, H).data; const g = new Float32Array(W * H);
+    for (let i = 0; i < W * H; i++) g[i] = (d[i * 4] * 299 + d[i * 4 + 1] * 587 + d[i * 4 + 2] * 114) / 1000;
+    if (prev) { let sum = 0; for (let i = 0; i < g.length; i++) sum += Math.abs(g[i] - prev[i]); diffs.push(sum / g.length); times.push(t); }
+    prev = g;
+    if (Math.round(t / step) % 10 === 0) $('prog').innerHTML = `${label}を判定中… <b>${Math.round(t / D * 100)}%</b>`;
+  }
+  // しきい値＝中央値の4倍か14のどちらか大きい方。0.3秒以内に続く山は1つにまとめる
+  const sorted = [...diffs].sort((a, b) => a - b), med = sorted[Math.floor(sorted.length / 2)] || 0;
+  const th = Math.max(14, med * 4);
+  const cuts = [];
+  diffs.forEach((m, i) => { if (m > th && (!cuts.length || times[i] - cuts[cuts.length - 1] > 0.3)) cuts.push(+times[i].toFixed(2)); });
+  // 2秒以上ほぼ絵が動かない区間
+  let run = 0, runStart = 0;
+  diffs.forEach((m, i) => { if (m < Math.max(0.8, med * 0.5)) { if (!run) runStart = times[i]; run += step; } else { if (run >= 2) stills.push([+runStart.toFixed(1), +times[i].toFixed(1)]); run = 0; } });
+  if (run >= 2) stills.push([+runStart.toFixed(1), +D.toFixed(1)]);
+  const b = [0, ...cuts, D]; obj.shots = [];
+  for (let i = 0; i < b.length - 1; i++) if (b[i + 1] - b[i] > 0.05) obj.shots.push({ shot: obj.shots.length + 1, start: b[i], end: b[i + 1] });
+  obj.stills = stills; obj.duration = D;
+  busy = false; vid.currentTime = wasT; vid.muted = wasMuted; $('prog').textContent = '';
+}
+
+// ---------- 音の判定（無音・音量） ----------
+async function analyzeAudio(file, obj) {
+  try {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = await ac.decodeAudioData(await file.arrayBuffer());
+    const ch = buf.getChannelData(0), sr = buf.sampleRate, win = Math.floor(sr * 0.05);
+    const db = []; let peak = 0;
+    for (let i = 0; i + win <= ch.length; i += win) { let sq = 0; for (let j = i; j < i + win; j++) { const x = ch[j]; sq += x * x; if (Math.abs(x) > peak) peak = Math.abs(x); } db.push(20 * Math.log10(Math.sqrt(sq / win) + 1e-9)); }
+    const sil = []; let run = 0, st = 0;
+    db.forEach((d, i) => { if (d < -45) { if (!run) st = i * 0.05; run += 0.05; } else { if (run >= 0.8) sil.push([+st.toFixed(2), +(i * 0.05).toFixed(2)]); run = 0; } });
+    if (run >= 0.8) sil.push([+st.toFixed(2), +buf.duration.toFixed(2)]);
+    const loud = db.filter(d => d > -60); const avg = loud.length ? loud.reduce((a, b) => a + b, 0) / loud.length : -99;
+    obj.silences = sil; obj.audio = { peakDb: 20 * Math.log10(peak + 1e-9), avgDb: avg, hasAudio: peak > 0.001 };
+    ac.close();
+  } catch (e) { obj.silences = []; obj.audio = { error: true }; }
+}
+
+async function analyzeAll() {
+  if (!mine) return;
+  $('verdict').innerHTML = '<div class="empty-state">判定しています…（動画の長さの数倍かかります）</div>';
+  await analyzeAudio(mine.file, mine);
+  await detectShots(v, mine, '今の版');
+  renderTrack(); renderNow(); verdict(); cmpTable(); $('rerun').hidden = false;
+}
+$('rerun').onclick = analyzeAll;
+
+// ---------- 判定の文章 ----------
+function verdict() {
+  if (!mine || !mine.shots.length) return;
+  const rows = [];
+  const add = (s, m, sub, t) => rows.push({ s, m, sub, t });
+  const D = mine.duration, n = mine.shots.length, avg = D / n;
+  if (src && src.duration) {
+    const d = D - src.duration;
+    add(Math.abs(d) <= 0.3 ? 'ok' : Math.abs(d) <= 1 ? 'warn' : 'bad', `尺：今の版 ${fmt(D)}（元ネタ ${fmt(src.duration)}、${d >= 0 ? '+' : ''}${d.toFixed(1)}秒）`, Math.abs(d) > 1 ? '本家がショートの長さなら切らない・間を詰めない' : '');
+  } else add(D <= 60 ? 'ok' : 'bad', `尺：${fmt(D)}`, D > 60 ? '60秒を超えるとショートになりません' : '元ネタを入れると尺の差も見ます');
+  if (src && src.shots.length) {
+    const dn = n - src.shots.length;
+    add(dn === 0 ? 'ok' : Math.abs(dn) <= 2 ? 'warn' : 'bad', `ショット数：今の版 ${n}（元ネタ ${src.shots.length}）`, dn < 0 ? '元ネタより切り替えが少ない。元ネタで絵が変わる所で替える' : dn > 0 ? '元ネタより多い。意図した追加か確認' : '');
+  } else add(avg <= 1.5 ? 'ok' : avg <= 2.5 ? 'warn' : 'bad', `ショット数：${n}（平均 ${avg.toFixed(1)}秒／ショット）`, avg > 1.5 ? 'テンポが遅め。セリフごとに動きか絵替えを1つ' : '');
+  const long = mine.shots.filter(x => x.end - x.start >= 3);
+  if (long.length) long.forEach(x => add('warn', `長いショット ${x.shot}：${fmt(x.start)}〜${fmt(x.end)}（${(x.end - x.start).toFixed(1)}秒）`, '3秒以上同じ絵。寄り・小物・動きを足す', x.start));
+  else add('ok', '3秒以上続くショットなし', '');
+  (mine.stills || []).forEach(x => add('warn', `ほぼ静止 ${fmt(x[0])}〜${fmt(x[1])}`, '口パクや動きが止まって見える区間', x[0]));
+  const first = mine.shots[0], fl = first.end - first.start;
+  add(fl <= 1.2 ? 'ok' : 'warn', `冒頭のショット ${fl.toFixed(1)}秒`, fl > 1.2 ? '最初の1秒で絵が変わらない。冒頭は一撃' : '', 0);
+  if (mine.audio) {
+    if (mine.audio.error) add('warn', '音：読めませんでした', 'この形式は音の判定ができません');
+    else if (!mine.audio.hasAudio) add('bad', '音：音声トラックが無いか無音です', '');
+    else {
+      add(mine.audio.peakDb > -1 ? 'warn' : 'ok', `音量：ピーク ${mine.audio.peakDb.toFixed(1)} dB・平均 ${mine.audio.avgDb.toFixed(1)} dB`, mine.audio.peakDb > -1 ? '割れている可能性。少し下げる' : mine.audio.avgDb < -30 ? '小さめ。スマホで聞こえるか確認' : '');
+      if (mine.silences.length) mine.silences.forEach(x => add(x[0] < 0.1 ? 'bad' : 'warn', `無音 ${fmt(x[0])}〜${fmt(x[1])}（${(x[1] - x[0]).toFixed(1)}秒）`, x[0] < 0.1 ? '頭が無音。音声がズレていないか確認' : '0.8秒以上の間。本家にも同じ間があるか確認', x[0]));
+      else add('ok', '0.8秒以上の無音なし', '');
+    }
+  }
+  if (src && src.shots.length) {
+    const m = Math.min(src.shots.length, n); let worst = 0, wi = -1;
+    for (let i = 0; i < m; i++) { const d = Math.abs(mine.shots[i].start - src.shots[i].start); if (d > worst) { worst = d; wi = i; } }
+    add(worst <= 0.3 ? 'ok' : worst <= 0.8 ? 'warn' : 'bad', `切り替えのズレ：最大 ${worst.toFixed(2)}秒（ショット ${wi + 1}）`, worst > 0.3 ? '下の表の赤い行から直す' : '', wi >= 0 ? mine.shots[wi].start : undefined);
+  }
+  const order = { bad: 0, warn: 1, ok: 2 }, lab = { ok: 'OK', warn: '注意', bad: '直す' };
+  rows.sort((a, b) => order[a.s] - order[b.s]);
+  $('verdict').innerHTML = rows.map(r => `<div class="row"><span class="s ${r.s}">${lab[r.s]}</span><div class="m">${esc(r.m)}${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</div>${r.t !== undefined ? `<button class="j" data-t="${r.t}">飛ぶ</button>` : ''}</div>`).join('');
+}
+$('verdict').addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (!b) return; v.pause(); v.currentTime = +b.dataset.t + 0.01; window.scrollTo({ top: 0, behavior: 'smooth' }); });
+
+function cmpTable() {
+  const has = src && src.shots.length && mine && mine.shots.length;
+  $('cmpbox').hidden = !has; if (!has) return;
+  const m = Math.max(src.shots.length, mine.shots.length);
+  let h = '<tr><th>#</th><th>元ネタ 開始</th><th>今の版 開始</th><th>ズレ</th><th>元 長さ</th><th>今 長さ</th></tr>';
+  for (let i = 0; i < m; i++) {
+    const a = src.shots[i], b = mine.shots[i], d = a && b ? b.start - a.start : null;
+    const cls = d === null ? '' : Math.abs(d) > 0.8 ? 'bad' : Math.abs(d) > 0.3 ? 'warn' : '';
+    h += `<tr data-t="${b ? b.start : ''}"><td>${i + 1}</td><td>${a ? fmt(a.start) : '–'}</td><td>${b ? fmt(b.start) : '–'}</td><td class="d ${cls}">${d === null ? '–' : (d >= 0 ? '+' : '') + d.toFixed(2)}</td><td>${a ? (a.end - a.start).toFixed(1) : '–'}</td><td>${b ? (b.end - b.start).toFixed(1) : '–'}</td></tr>`;
+  }
+  $('cmp').innerHTML = h;
+}
+$('cmp').addEventListener('click', e => { const tr = e.target.closest('tr[data-t]'); if (!tr || tr.dataset.t === '') return; v.pause(); v.currentTime = +tr.dataset.t + 0.01; });
+
+// ---------- 画面 ----------
+const shotAt = t => { if (!mine || !mine.shots.length) return null; let r = mine.shots[0]; for (const x of mine.shots) { if (x.start <= t + 0.001) r = x; else break; } return r; };
+function renderNow() {
+  const t = v.currentTime, sh = shotAt(t);
+  $('now').innerHTML = `<div class="scene">ショット ${sh ? sh.shot : '–'}<span class="t">${fmt(t)}</span>${sh ? `<span class="r">このショット ${fmt(sh.start)}〜${fmt(sh.end)}（${(sh.end - sh.start).toFixed(1)}秒）</span>` : ''}</div>`;
+  $('time').textContent = `${fmt(t)} / ${fmt(dur())}`;
+  if (dur()) $('head').style.left = (t / dur() * 100) + '%';
+  if (sh) $('cmp').querySelectorAll('tr').forEach((tr, i) => tr.classList.toggle('cur', i === sh.shot));
+}
+function renderTrack() {
+  const tr = $('track'), d = dur();
+  tr.querySelectorAll('.shot,.pin,.sil').forEach(x => x.remove());
+  if (!mine || !d) return;
+  mine.shots.forEach(sh => { const e = document.createElement('div'); e.className = 'shot' + (sh.end - sh.start >= 3 ? ' long' : ''); e.style.left = (sh.start / d * 100) + '%'; e.style.width = ((sh.end - sh.start) / d * 100) + '%'; tr.insertBefore(e, $('head')); });
+  (mine.silences || []).forEach(x => { const e = document.createElement('div'); e.className = 'sil'; e.style.left = (x[0] / d * 100) + '%'; e.style.width = ((x[1] - x[0]) / d * 100) + '%'; tr.appendChild(e); });
+  comments.forEach(c => { const e = document.createElement('div'); e.className = 'pin'; e.style.left = (c.time / d * 100) + '%'; tr.appendChild(e); });
+}
+function renderTrack2() {
+  const tr = $('track2'); tr.innerHTML = '';
+  const d = dur() || (src && src.duration); if (!src || !src.shots.length || !d) return;
+  src.shots.forEach(sh => { const e = document.createElement('div'); e.className = 'shot'; e.style.left = (sh.start / d * 100) + '%'; e.style.width = ((sh.end - sh.start) / d * 100) + '%'; tr.appendChild(e); });
+}
+function renderList() {
+  $('listTitle').textContent = `メモ ${comments.length}件`;
+  $('cs').innerHTML = comments.length ? comments.map((c, i) => `<div class="c" data-t="${c.time}"><span class="t">${fmt(c.time)}</span><span class="body">${esc(c.text)}</span><button class="x" data-i="${i}">消す</button></div>`).join('') : '<div class="c empty">まだメモはありません。</div>';
+  renderTrack();
+}
+$('track').addEventListener('pointerdown', e => { const d = dur(); if (!d) return; const r = e.currentTarget.getBoundingClientRect(); v.pause(); v.currentTime = Math.min(d, Math.max(0, (e.clientX - r.left) / r.width * d)); });
+$('play').onclick = () => v.paused ? v.play() : v.pause();
+$('back').onclick = () => { v.currentTime = Math.max(0, v.currentTime - 1); };
+$('fwd').onclick = () => { v.currentTime = Math.min(dur(), v.currentTime + 1); };
+const jumpShot = dir => { const sh = shotAt(v.currentTime); if (!sh) return; const i = mine.shots.indexOf(sh); v.pause(); v.currentTime = mine.shots[Math.min(mine.shots.length - 1, Math.max(0, i + dir))].start + 0.01; };
+$('prevShot').onclick = () => jumpShot(-1); $('nextShot').onclick = () => jumpShot(1);
+$('cs').addEventListener('click', e => {
+  const x = e.target.closest('button.x'); if (x) { comments.splice(+x.dataset.i, 1); store.set('remix-check|' + KEY, JSON.stringify(comments)); renderList(); return; }
+  const c = e.target.closest('.c'); if (!c || !c.dataset.t) return; v.pause(); v.currentTime = +c.dataset.t; window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+$('save').onclick = () => {
+  const text = $('in').value.trim(); if (!text || !mine) return;
+  v.pause(); const t = +v.currentTime.toFixed(2), sh = shotAt(t);
+  comments.push({ time: t, shot: sh ? sh.shot : 0, text }); comments.sort((a, b) => a.time - b.time);
+  store.set('remix-check|' + KEY, JSON.stringify(comments)); renderList(); $('in').value = ''; $('msg').textContent = `保存しました（${fmt(t)}）`;
+};
+$('copy').onclick = async () => {
+  if (!mine) return;
+  const lines = [`# ${KEY}`, ...[...$('verdict').querySelectorAll('.row')].map(r => `[${r.querySelector('.s').textContent}] ${r.querySelector('.m').textContent}`), '', '# メモ', ...comments.map(c => `${fmt(c.time)} ショット${c.shot}：${c.text}`)];
+  try { await navigator.clipboard.writeText(lines.join('\n')); $('msg').textContent = 'コピーしました。Claude に貼れば直します'; } catch (e) { $('msg').textContent = 'コピーできませんでした'; }
+};
+</script>
+</body>
+</html>
