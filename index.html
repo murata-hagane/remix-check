@@ -219,7 +219,7 @@ function setSrcYt(url) {
   try {
     const meta = await (await fetch(`videos/${encodeURIComponent(key)}.json`, { cache: 'no-store' })).json().catch(() => ({}));
     const r = await fetch(`videos/${encodeURIComponent(key)}.mp4`); if (!r.ok) throw 0;
-    remote = !API.includes('AKfycby5GvOJsJQGZiA0EMGRdg8XmkYHfTu_wFWFk7HQSs8LqALt3hQKt6CKzyxgCII9KtB8');
+    remote = API.includes('/macros/s/') && API.endsWith('/exec');
     setMine(new File([await r.blob()], key + '.mp4', { type: 'video/mp4' }));
     if (remote) { comments = []; renderList(); loadComments(); } else $('hint').textContent = 'コメントはこのブラウザだけに残ります。';
     if (meta.title) document.title = `${meta.title} リミックス 自動チェック`;
