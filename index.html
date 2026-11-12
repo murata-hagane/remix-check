@@ -80,11 +80,18 @@ textarea:focus, input:focus { outline:none; border-color:var(--accent); }
 .send { display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap; }
 .send button.main { font:inherit; font-weight:700; padding:10px 18px; border-radius:8px; border:none; background:var(--accent); color:var(--accent-ink); cursor:pointer; }
 .msg { font-size:13px; color:var(--sub); }
-.c { padding:8px 0; border-top:1px solid var(--line); cursor:pointer; display:flex; gap:8px; }
-.c .t { color:var(--accent); font-weight:700; font-variant-numeric:tabular-nums; flex:0 0 auto; }
-.c .body { white-space:pre-wrap; overflow-wrap:anywhere; flex:1 1 auto; }
-.c .x { font:inherit; font-size:12px; border:1px solid var(--line); background:var(--panel); color:var(--sub); border-radius:6px; padding:2px 8px; cursor:pointer; align-self:flex-start; }
-.c.empty { color:var(--sub); cursor:default; display:block; }
+.c { padding:10px 0; border-top:1px solid var(--line); cursor:pointer; }
+.c .meta { font-size:12px; color:var(--sub); display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.c .meta .t { color:var(--accent); font-weight:700; font-variant-numeric:tabular-nums; }
+.c .body { margin-top:3px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.c .reply { margin-top:6px; padding:6px 8px; background:var(--soft); border-left:3px solid var(--reply-line); border-radius:4px; font-size:14px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.c .reply b { color:var(--reply-line); }
+.c .x { margin-left:auto; font:inherit; font-size:12px; border:1px solid var(--line); background:var(--panel); color:var(--sub); border-radius:6px; padding:2px 8px; cursor:pointer; }
+.c .confirm { margin-top:6px; display:flex; gap:8px; align-items:center; font-size:13px; }
+.c .confirm button { font:inherit; font-size:13px; padding:5px 10px; border-radius:6px; border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; }
+.c .confirm button.del { background:var(--bad); border-color:var(--bad); color:#fff; }
+.c.empty { color:var(--sub); cursor:default; }
+.msg.err { color:var(--bad); }
 .empty-state { color:var(--sub); font-size:13px; }
 button:focus-visible { outline:2px solid var(--reply-line); outline-offset:2px; }
 </style>
@@ -146,13 +153,16 @@ button:focus-visible { outline:2px solid var(--reply-line); outline-offset:2px; 
     <div class="tblwrap"><table id="cmp"></table></div>
   </div>
   <div class="box">
-    <label class="f" for="in">止めた所へのメモ</label>
+    <label class="f" for="name">お名前</label>
+    <input type="text" id="name" maxlength="40" placeholder="例：山田" style="width:100%;font:inherit;font-size:16px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);margin-bottom:10px">
+    <label class="f" for="in">止めた所へのコメント</label>
     <textarea id="in" maxlength="2000" placeholder="例：ここの字幕が顔にかかっている"></textarea>
-    <div class="send"><button class="main" id="save">この秒に保存</button><button class="mini" id="copy">判定とメモを全部コピー</button><span class="msg" id="msg"></span></div>
+    <div class="send"><button class="main" id="save">この秒に保存</button><button class="mini" id="copy">判定とコメントを全部コピー</button><span class="msg" id="msg"></span></div>
+    <div class="hint" id="hint" style="font-size:12px;color:var(--sub);margin-top:6px">動画を止めると、その秒にコメントが付きます。保存したコメントは AI が読んで直し、コメントの下に返事を書きます。</div>
   </div>
   <div class="box">
-    <h2><span id="listTitle">メモ 0件</span></h2>
-    <div id="cs"><div class="c empty">まだメモはありません。</div></div>
+    <h2><span id="listTitle">コメント 0件</span><button id="reload">返事を読み込む</button></h2>
+    <div id="cs"><div class="c empty">まだコメントはありません。</div></div>
   </div>
 </div>
 </main>
@@ -173,7 +183,7 @@ function setMine(file) {
   $('ban').textContent = KEY; $('minelab').textContent = `今の版（${KEY}）`;
   v.src = URL.createObjectURL(file);
   mine = { file, shots: [], silences: [], stills: [], audio: null };
-  try { comments = JSON.parse(store.get('remix-check|' + KEY) || '[]'); } catch (e) { comments = []; }
+  if (!remote) { try { comments = JSON.parse(store.get('remix-check|' + KEY) || '[]'); } catch (e) { comments = []; } $('hint').textContent = 'コメントはこのブラウザだけに残ります（共有リンクで開いた時は全員に見えます）。'; }
   renderList();
   v.addEventListener('loadedmetadata', () => analyzeAll(), { once: true });
 }
@@ -209,7 +219,9 @@ function setSrcYt(url) {
   try {
     const meta = await (await fetch(`videos/${encodeURIComponent(key)}.json`, { cache: 'no-store' })).json().catch(() => ({}));
     const r = await fetch(`videos/${encodeURIComponent(key)}.mp4`); if (!r.ok) throw 0;
+    remote = !API.includes('AKfycby5GvOJsJQGZiA0EMGRdg8XmkYHfTu_wFWFk7HQSs8LqALt3hQKt6CKzyxgCII9KtB8');
     setMine(new File([await r.blob()], key + '.mp4', { type: 'video/mp4' }));
+    if (remote) { comments = []; renderList(); loadComments(); } else $('hint').textContent = 'コメントはこのブラウザだけに残ります。';
     if (meta.title) document.title = `${meta.title} リミックス 自動チェック`;
     if (meta.src) { $('yturl').value = meta.src; setSrcYt(meta.src); }
     $('drop').hidden = true;
@@ -388,10 +400,37 @@ function renderTrack2() {
   const d = dur() || (src && src.duration); if (!src || !src.shots.length || !d) return;
   src.shots.forEach(sh => { const e = document.createElement('div'); e.className = 'shot'; e.style.left = (sh.start / d * 100) + '%'; e.style.width = ((sh.end - sh.start) / d * 100) + '%'; tr.appendChild(e); });
 }
+// ---------- コメント（受け口＝Google Apps Script。?v= のリンクで開いた時だけ全員に共有。それ以外はこのブラウザだけ） ----------
+const API = 'https://script.google.com/macros/s/AKfycby5GvOJsJQGZiA0EMGRdg8XmkYHfTu_wFWFk7HQSs8LqALt3hQKt6CKzyxgCII9KtB8/exec';
+let remote = false, askDel = null;
+const owns = () => { try { return JSON.parse(store.get('remix-check-own') || '{}'); } catch (e) { return {}; } };
+const ownOf = id => owns()[`${KEY}|${id}`] || '';
+const setOwn = (id, x) => { const o = owns(); if (x) o[`${KEY}|${id}`] = x; else delete o[`${KEY}|${id}`]; store.set('remix-check-own', JSON.stringify(o)); };
+const norm = c => ({ id: c.id, time: +c.time, shot: c.shot, name: c.name || '', text: c.comment ?? c.text ?? '', reply: c.reply || '' });
 function renderList() {
-  $('listTitle').textContent = `メモ ${comments.length}件`;
-  $('cs').innerHTML = comments.length ? comments.map((c, i) => `<div class="c" data-t="${c.time}"><span class="t">${fmt(c.time)}</span><span class="body">${esc(c.text)}</span><button class="x" data-i="${i}">消す</button></div>`).join('') : '<div class="c empty">まだメモはありません。</div>';
+  $('listTitle').textContent = `コメント ${comments.length}件`;
+  $('cs').innerHTML = comments.length ? comments.map((c, i) => `
+    <div class="c" data-t="${c.time}">
+      <div class="meta"><span class="t">${fmt(c.time)}</span><span>ショット ${esc(c.shot)}</span>${c.name ? `<span>${esc(c.name)}</span>` : ''}${(!remote || ownOf(c.id)) ? `<button class="x" data-del="${esc(c.id ?? i)}">消す</button>` : ''}</div>
+      <div class="body">${esc(c.text)}</div>
+      ${askDel !== null && String(askDel) === String(c.id ?? i) ? `<div class="confirm">このコメントを消しますか？<button class="del" data-yes="${esc(c.id ?? i)}">消す</button><button data-no="1">やめる</button></div>` : ''}
+      ${c.reply ? `<div class="reply"><b>AIの返事：</b>${esc(c.reply)}</div>` : ''}
+    </div>`).join('') : '<div class="c empty">まだコメントはありません。動画を止めて、上の欄に書いてください。</div>';
   renderTrack();
+}
+async function loadComments() {
+  if (!remote) return;
+  try {
+    const r = await (await fetch(`${API}?video=${encodeURIComponent(KEY)}`)).json();
+    if (r.ok) { comments = r.comments.map(norm); renderList(); }
+  } catch (e) { $('msg').className = 'msg err'; $('msg').textContent = 'コメントを読めませんでした。電波を確かめて「返事を読み込む」を押してください'; }
+}
+$('reload').onclick = loadComments;
+async function removeComment(id) {
+  if (!remote) { comments.splice(+id, 1); store.set('remix-check|' + KEY, JSON.stringify(comments)); renderList(); return; }
+  const r = await (await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ mine: 'delete', video: KEY, id, own: ownOf(id) }) })).json();
+  if (!r.ok) throw new Error(r.error || '');
+  setOwn(id, ''); comments = r.comments.map(norm); renderList();
 }
 $('track').addEventListener('pointerdown', e => { const d = dur(); if (!d) return; const r = e.currentTarget.getBoundingClientRect(); v.pause(); v.currentTime = Math.min(d, Math.max(0, (e.clientX - r.left) / r.width * d)); });
 $('play').onclick = () => v.paused ? v.play() : v.pause();
@@ -399,20 +438,46 @@ $('back').onclick = () => { v.currentTime = Math.max(0, v.currentTime - 1); };
 $('fwd').onclick = () => { v.currentTime = Math.min(dur(), v.currentTime + 1); };
 const jumpShot = dir => { const sh = shotAt(v.currentTime); if (!sh) return; const i = mine.shots.indexOf(sh); v.pause(); v.currentTime = mine.shots[Math.min(mine.shots.length - 1, Math.max(0, i + dir))].start + 0.01; };
 $('prevShot').onclick = () => jumpShot(-1); $('nextShot').onclick = () => jumpShot(1);
-$('cs').addEventListener('click', e => {
-  const x = e.target.closest('button.x'); if (x) { comments.splice(+x.dataset.i, 1); store.set('remix-check|' + KEY, JSON.stringify(comments)); renderList(); return; }
+$('cs').addEventListener('click', async e => {
+  const b = e.target.closest('button');
+  if (b) {
+    e.stopPropagation();
+    if (b.dataset.del !== undefined) { askDel = b.dataset.del; renderList(); return; }
+    if (b.dataset.no) { askDel = null; renderList(); return; }
+    if (b.dataset.yes !== undefined) {
+      b.disabled = true;
+      try { await removeComment(b.dataset.yes); askDel = null; $('msg').className = 'msg'; $('msg').textContent = 'コメントを消しました'; }
+      catch (err) { askDel = null; renderList(); $('msg').className = 'msg err'; $('msg').textContent = '消せませんでした。電波を確かめて、もう一度押してください'; }
+    }
+    return;
+  }
   const c = e.target.closest('.c'); if (!c || !c.dataset.t) return; v.pause(); v.currentTime = +c.dataset.t; window.scrollTo({ top: 0, behavior: 'smooth' });
 });
-$('save').onclick = () => {
+$('name').value = store.get('remix-check-name');
+$('name').addEventListener('change', () => store.set('remix-check-name', $('name').value.trim()));
+$('save').onclick = async () => {
   const text = $('in').value.trim(); if (!text || !mine) return;
-  v.pause(); const t = +v.currentTime.toFixed(2), sh = shotAt(t);
-  comments.push({ time: t, shot: sh ? sh.shot : 0, text }); comments.sort((a, b) => a.time - b.time);
-  store.set('remix-check|' + KEY, JSON.stringify(comments)); renderList(); $('in').value = ''; $('msg').textContent = `保存しました（${fmt(t)}）`;
+  v.pause(); const t = +v.currentTime.toFixed(2), sh = shotAt(t), name = $('name').value.trim();
+  store.set('remix-check-name', name);
+  if (!remote) {
+    comments.push({ time: t, shot: sh ? sh.shot : 0, name, text }); comments.sort((a, b) => a.time - b.time);
+    store.set('remix-check|' + KEY, JSON.stringify(comments)); renderList(); $('in').value = ''; $('msg').className = 'msg'; $('msg').textContent = `保存しました（${fmt(t)}・このブラウザだけ）`;
+    return;
+  }
+  $('save').disabled = true; $('msg').className = 'msg'; $('msg').textContent = '保存しています…';
+  try {
+    const r = await (await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ video: KEY, time: t, shot: sh ? sh.shot : 0, texts: '', comment: text, name }) })).json();
+    if (!r.ok) throw new Error(r.error || '');
+    if (r.id && r.own) setOwn(r.id, r.own);
+    comments = r.comments.map(norm); renderList(); $('in').value = ''; $('msg').textContent = `保存しました（${fmt(t)}・ショット${sh ? sh.shot : '–'}）`;
+  } catch (err) { $('msg').className = 'msg err'; $('msg').textContent = '保存できませんでした。電波を確かめて、もう一度押してください'; }
+  $('save').disabled = false;
 };
 $('copy').onclick = async () => {
   if (!mine) return;
-  const lines = [`# ${KEY}`, ...[...$('verdict').querySelectorAll('.row')].map(r => `[${r.querySelector('.s').textContent}] ${r.querySelector('.m').textContent}`), '', '# メモ', ...comments.map(c => `${fmt(c.time)} ショット${c.shot}：${c.text}`)];
-  try { await navigator.clipboard.writeText(lines.join('\n')); $('msg').textContent = 'コピーしました。Claude に貼れば直します'; } catch (e) { $('msg').textContent = 'コピーできませんでした'; }
+  const lines = [`# ${KEY}`, ...[...$('verdict').querySelectorAll('.row')].map(r => `[${r.querySelector('.s').textContent}] ${r.querySelector('.m').textContent}`), '', '# コメント', ...comments.map(c => `${fmt(c.time)} ショット${c.shot}${c.name ? ' ' + c.name : ''}：${c.text}${c.reply ? '\n  → ' + c.reply : ''}`)];
+  try { await navigator.clipboard.writeText(lines.join('\n')); $('msg').className = 'msg'; $('msg').textContent = 'コピーしました'; } catch (e) { $('msg').className = 'msg err'; $('msg').textContent = 'コピーできませんでした'; }
 };
 </script>
 </body>
